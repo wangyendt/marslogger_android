@@ -21,7 +21,7 @@
     <string name="app_name">MarsLogger</string>
     <string name="cameraOutputDirLabel_text">Output folder:</string>
     <string name="cameraOutputDir_text">[dir name]</string>
-    <string name="toggleRecordingOn">Record</string>
+    <string name="toggleRecordingOn">Record IMU</string>
     <string name="toggleRecordingOff">Stop</string>
     <string name="toggleImuViewOn">Start</string>
     <string name="toggleImuViewOff">Stop</string>

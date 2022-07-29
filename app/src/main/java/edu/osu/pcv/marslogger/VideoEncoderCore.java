@@ -126,12 +126,12 @@ public class VideoEncoderCore {
         mTrackIndex = -1;
         mMuxerStarted = false;
 
-        try {
-            mFrameMetadataWriter = new BufferedWriter(
-                    new FileWriter(metaFile, false));
-        } catch (IOException err) {
-            Timber.e(err, "IOException in opening frameMetadataWriter.");
-        }
+//        try {
+//            mFrameMetadataWriter = new BufferedWriter(
+//                    new FileWriter(metaFile, false));
+//        } catch (IOException err) {
+//            Timber.e(err, "IOException in opening frameMetadataWriter.");
+//        }
         mTimeArray = new ArrayList<>();
     }
 

@@ -438,25 +438,25 @@ public class CameraCaptureActivity extends CameraCaptureActivityBase
         mRecordingEnabled = !mRecordingEnabled;
         if (mRecordingEnabled) {
             String outputDir = renewOutputDir();
-            String outputFile = outputDir + File.separator + "movie.mp4";
-            String metaFile = outputDir + File.separator + "frame_timestamps.txt";
+//            String outputFile = outputDir + File.separator + "movie.mp4";
+//            String metaFile = outputDir + File.separator + "frame_timestamps.txt";
             String basename = outputDir.substring(outputDir.lastIndexOf("/")+1);
             mOutputDirText.setText(basename);
-            mRenderer.resetOutputFiles(outputFile, metaFile); // this will not cause sync issues
+//            mRenderer.resetOutputFiles(outputFile, metaFile); // this will not cause sync issues
             String inertialFile = outputDir + File.separator + "gyro_accel.csv";
-            String gpsFile = outputDir + File.separator + "gps.csv";
-            String allGpsFile = outputDir + File.separator + "all_gps.csv";
-            String edgeEpochFile = outputDir + File.separator + "edge_epochs.txt";
-            mTimeBaseManager.startRecording(edgeEpochFile, mCamera2Proxy.getmTimeSourceValue());
-            mGpsManager.startRecording(gpsFile, allGpsFile);
+//            String gpsFile = outputDir + File.separator + "gps.csv";
+//            String allGpsFile = outputDir + File.separator + "all_gps.csv";
+//            String edgeEpochFile = outputDir + File.separator + "edge_epochs.txt";
+//            mTimeBaseManager.startRecording(edgeEpochFile, mCamera2Proxy.getmTimeSourceValue());
+//            mGpsManager.startRecording(gpsFile, allGpsFile);
             mImuManager.startRecording(inertialFile);
-            mCamera2Proxy.startRecordingCaptureResult(
-                    outputDir + File.separator + "movie_metadata.csv");
+//            mCamera2Proxy.startRecordingCaptureResult(
+//                    outputDir + File.separator + "movie_metadata.csv");
         } else {
-            mCamera2Proxy.stopRecordingCaptureResult();
+//            mCamera2Proxy.stopRecordingCaptureResult();
             mImuManager.stopRecording();
-            mGpsManager.stopRecording();
-            mTimeBaseManager.stopRecording();
+//            mGpsManager.stopRecording();
+//            mTimeBaseManager.stopRecording();
         }
         mGLView.queueEvent(new Runnable() {
             @Override
@@ -791,14 +791,14 @@ class CameraSurfaceRenderer implements GLSurfaceView.Renderer {
                     // The output video has a size e.g., 720x1280. Video of the same size is recorded in
                     // the portrait mode of the complex CameraRecorder-android at
                     // https://github.com/MasayukiSuda/CameraRecorder-android.
-                    mVideoEncoder.startRecording(
-                            new TextureMovieEncoder.EncoderConfig(
-                                    mOutputFile,
-                                    mVideoFrameHeight, mVideoFrameWidth,
-                                    CameraUtils.calcBitRate(mVideoFrameWidth, mVideoFrameHeight,
-                                            VideoEncoderCore.FRAME_RATE),
-                                    EGL14.eglGetCurrentContext(),
-                                    mMetadataFile));
+//                    mVideoEncoder.startRecording(
+//                            new TextureMovieEncoder.EncoderConfig(
+//                                    mOutputFile,
+//                                    mVideoFrameHeight, mVideoFrameWidth,
+//                                    CameraUtils.calcBitRate(mVideoFrameWidth, mVideoFrameHeight,
+//                                            VideoEncoderCore.FRAME_RATE),
+//                                    EGL14.eglGetCurrentContext(),
+//                                    mMetadataFile));
                     mRecordingStatus = RECORDING_ON;
                     break;
                 case RECORDING_RESUMED:
@@ -818,7 +818,7 @@ class CameraSurfaceRenderer implements GLSurfaceView.Renderer {
                 case RECORDING_RESUMED:
                     // stop recording
                     Timber.d("STOP recording");
-                    mVideoEncoder.stopRecording();
+//                    mVideoEncoder.stopRecording();
                     mRecordingStatus = RECORDING_OFF;
                     break;
                 case RECORDING_OFF:
