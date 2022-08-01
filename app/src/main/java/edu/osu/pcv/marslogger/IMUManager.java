@@ -17,8 +17,10 @@ import android.util.Log;
 import com.marslogger.locationprovider.LocationProvider;
 
 import java.io.BufferedWriter;
+import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.io.OutputStreamWriter;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Deque;
@@ -73,6 +75,7 @@ public class IMUManager implements SensorEventListener {
     private int angular_acc;
 
     private volatile boolean mRecordingInertialData = false;
+    private FileOutputStream fos = null;
     private BufferedWriter mDataWriter = null;
     private HandlerThread mSensorThread;
 
@@ -89,20 +92,20 @@ public class IMUManager implements SensorEventListener {
 
     public void startRecording(String captureResultFile) {
         try {
-            mDataWriter = new BufferedWriter(
-                    new FileWriter(captureResultFile, false));
+            fos = new FileOutputStream(captureResultFile);
+            mDataWriter = new BufferedWriter(new OutputStreamWriter(fos));
             if (mGyro == null || mAccel == null) {
                 String warning = "The device may not have a gyroscope or an accelerometer!\n" +
                         "No IMU data will be logged.\n" +
-                        "Has Gyroscope? " + (mGyro == null ? "No":"Yes") + "\n"
-                        + "Has Accelerometer? " + (mAccel == null ? "No":"Yes") + "\n";
+                        "Has Gyroscope? " + (mGyro == null ? "No" : "Yes") + "\n"
+                        + "Has Accelerometer? " + (mAccel == null ? "No" : "Yes") + "\n";
                 mDataWriter.write(warning);
             } else {
                 mDataWriter.write(ImuHeader);
             }
             mRecordingInertialData = true;
         } catch (IOException err) {
-            Timber.e(err,"IOException in opening inertial data writer at %s",
+            Timber.e(err, "IOException in opening inertial data writer at %s",
                     captureResultFile);
         }
     }
@@ -112,11 +115,14 @@ public class IMUManager implements SensorEventListener {
             mRecordingInertialData = false;
             try {
                 mDataWriter.flush();
-                mDataWriter.close();
+//                mDataWriter.close();
+//                fos.flush();
+//                fos.close();
             } catch (IOException err) {
                 Timber.e(err, "IOException in closing inertial data writer");
             }
             mDataWriter = null;
+//            fos = null;
         }
     }
 
@@ -129,113 +135,37 @@ public class IMUManager implements SensorEventListener {
         }
     }
 
-    // sync inertial data by interpolating linear acceleration for each gyro data
-    // Because the sensor events are delivered to the handler thread in order,
-    // no need for synchronization here
-    private SensorPacket syncInertialData() {
-        if (mGyroData.size() >= 1 && mAccelData.size() >= 2) {
-            SensorPacket oldestGyro = mGyroData.peekFirst();
-            SensorPacket oldestAccel = mAccelData.peekFirst();
-            SensorPacket latestAccel = mAccelData.peekLast();
-            if (oldestGyro.timestamp < oldestAccel.timestamp) {
-                Timber.w("throwing one gyro data");
-                mGyroData.removeFirst();
-            } else if (oldestGyro.timestamp > latestAccel.timestamp) {
-                Timber.w("throwing #accel data %d", mAccelData.size() - 1);
-                mAccelData.clear();
-                mAccelData.add(latestAccel);
-            } else { // linearly interpolate the accel data at the gyro timestamp
-                float[] gyro_accel = new float[6];
-                SensorPacket sp = new SensorPacket(oldestGyro.timestamp, oldestGyro.unixTime, gyro_accel);
-                gyro_accel[0] = oldestGyro.values[0];
-                gyro_accel[1] = oldestGyro.values[1];
-                gyro_accel[2] = oldestGyro.values[2];
-
-                SensorPacket leftAccel = null;
-                SensorPacket rightAccel = null;
-                Iterator<SensorPacket> itr = mAccelData.iterator();
-                while (itr.hasNext()) {
-                    SensorPacket packet = itr.next();
-                    if (packet.timestamp <= oldestGyro.timestamp) {
-                        leftAccel = packet;
-                    } else if (packet.timestamp >= oldestGyro.timestamp) {
-                        rightAccel = packet;
-                        break;
-                    }
-                }
-
-                if (oldestGyro.timestamp - leftAccel.timestamp <=
-                        mInterpolationTimeResolution) {
-                    gyro_accel[3] = leftAccel.values[0];
-                    gyro_accel[4] = leftAccel.values[1];
-                    gyro_accel[5] = leftAccel.values[2];
-                } else if (rightAccel.timestamp - oldestGyro.timestamp <=
-                        mInterpolationTimeResolution) {
-                    gyro_accel[3] = rightAccel.values[0];
-                    gyro_accel[4] = rightAccel.values[1];
-                    gyro_accel[5] = rightAccel.values[2];
-                } else {
-                    float tmp1 = oldestGyro.timestamp - leftAccel.timestamp;
-                    float tmp2 = rightAccel.timestamp - leftAccel.timestamp;
-                    float ratio = tmp1 / tmp2;
-                    gyro_accel[3] = leftAccel.values[0] +
-                            (rightAccel.values[0] - leftAccel.values[0]) * ratio;
-                    gyro_accel[4] = leftAccel.values[1] +
-                            (rightAccel.values[1] - leftAccel.values[1]) * ratio;
-                    gyro_accel[5] = leftAccel.values[2] +
-                            (rightAccel.values[2] - leftAccel.values[2]) * ratio;
-                }
-
-                mGyroData.removeFirst();
-                for (Iterator<SensorPacket> iterator = mAccelData.iterator();
-                     iterator.hasNext(); ) {
-                    SensorPacket packet = iterator.next();
-                    if (packet.timestamp < leftAccel.timestamp) {
-                        // Remove the current element from the iterator and the list.
-                        iterator.remove();
-                    } else {
-                        break;
-                    }
-                }
-                return sp;
-            }
-        }
-        return null;
-    }
 
     @Override
     public final void onSensorChanged(SensorEvent event) {
         long unixTime = System.currentTimeMillis();
         if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
-            SensorPacket sp = new SensorPacket(event.timestamp, unixTime, event.values);
-            mAccelData.add(sp);
-        } else if (event.sensor.getType() == Sensor.TYPE_GYROSCOPE) {
-            SensorPacket sp = new SensorPacket(event.timestamp, unixTime, event.values);
-            mGyroData.add(sp);
-            SensorPacket syncedData = syncInertialData();
-
-            boolean recordImuAndGps = mRecordingInertialData && gpsManager.ismRecordingGpsData();
-
-            // record both imu and gps data
-            if (recordImuAndGps) {
-                if (syncedData != null && mRecordingInertialData) {
-                    try {
-                        if (gpsManager.recordGpsValue(syncedData.timestamp, unixTime)) {
-                            mDataWriter.write(syncedData.toString() + "\n");
-                        }
-                    } catch (IOException ioe) {
-                        Timber.e(ioe);
+            if (mRecordingInertialData) {
+                try {
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("1,");
+                    for (float v : event.values) {
+                        sb.append(v + ",");
                     }
+                    sb.append(event.timestamp).append(unixTime).append("\n");
+                    mDataWriter.write(sb.toString());
+                } catch (IOException ioe) {
+                    Timber.e(ioe);
                 }
             }
-            // only record imu data if app is unable to create location listener for phone
-            else {
-                if (syncedData != null && mRecordingInertialData) {
-                    try {
-                        mDataWriter.write(syncedData.toString() + "\n");
-                    } catch (IOException ioe) {
-                        Timber.e(ioe);
+        } else if (event.sensor.getType() == Sensor.TYPE_GYROSCOPE) {
+
+            if (mRecordingInertialData) {
+                try {
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("2,");
+                    for (float v : event.values) {
+                        sb.append(v + ",");
                     }
+                    sb.append(event.timestamp).append(unixTime).append("\n");
+                    mDataWriter.write(sb.toString());
+                } catch (IOException ioe) {
+                    Timber.e(ioe);
                 }
             }
         }
