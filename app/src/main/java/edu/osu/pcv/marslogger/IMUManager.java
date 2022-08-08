@@ -39,8 +39,9 @@ public class IMUManager implements SensorEventListener {
     // needed to synchronize gps and imu values for the same timestamp
     private final GPSManager gpsManager;
 
-    public static String ImuHeader = "Timestamp[nanosec],gx[rad/s],gy[rad/s],gz[rad/s]," +
-            "ax[m/s^2],ay[m/s^2],az[m/s^2],Unix time[nanosec]\n";
+    public static String ImuHeader = "";
+    // ""Timestamp[nanosec],gx[rad/s],gy[rad/s],gz[rad/s]," +
+    // "ax[m/s^2],ay[m/s^2],az[m/s^2],Unix time[nanosec]\n";
 
     private class SensorPacket {
         long timestamp; // nanoseconds
@@ -70,6 +71,8 @@ public class IMUManager implements SensorEventListener {
     private SensorManager mSensorManager;
     private Sensor mAccel;
     private Sensor mGyro;
+    private Sensor mMag;
+    private Sensor mRotVec;
     private static SharedPreferences mSharedPreferences;
     private int linear_acc; // accuracy
     private int angular_acc;
@@ -87,6 +90,8 @@ public class IMUManager implements SensorEventListener {
         mSensorManager = (SensorManager) activity.getSystemService(Context.SENSOR_SERVICE);
         mAccel = mSensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
         mGyro = mSensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
+        mMag = mSensorManager.getDefaultSensor(Sensor.TYPE_MAGNETIC_FIELD);
+        mRotVec = mSensorManager.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
         mSharedPreferences = PreferenceManager.getDefaultSharedPreferences(activity);
     }
 
@@ -94,14 +99,16 @@ public class IMUManager implements SensorEventListener {
         try {
             fos = new FileOutputStream(captureResultFile);
             mDataWriter = new BufferedWriter(new OutputStreamWriter(fos));
-            if (mGyro == null || mAccel == null) {
+            if (mGyro == null || mAccel == null || mMag == null || mRotVec == null) {
                 String warning = "The device may not have a gyroscope or an accelerometer!\n" +
                         "No IMU data will be logged.\n" +
                         "Has Gyroscope? " + (mGyro == null ? "No" : "Yes") + "\n"
-                        + "Has Accelerometer? " + (mAccel == null ? "No" : "Yes") + "\n";
+                        + "Has Accelerometer? " + (mAccel == null ? "No" : "Yes") + "\n"
+                        + "Has Magnetic? " + (mMag == null ? "No" : "Yes") + "\n"
+                        + "Has Rotation Vector? " + (mRotVec == null ? "No" : "Yes") + "\n";
                 mDataWriter.write(warning);
             } else {
-                mDataWriter.write(ImuHeader);
+//                mDataWriter.write(ImuHeader);
             }
             mRecordingInertialData = true;
         } catch (IOException err) {
@@ -135,39 +142,35 @@ public class IMUManager implements SensorEventListener {
         }
     }
 
+    private void writeSensorData(float[] values, long timeStamp, long unixTime, int sensorTypeIndex) {
+        if (mRecordingInertialData) {
+            try {
+                StringBuilder sb = new StringBuilder();
+                sb.append(sensorTypeIndex).append(",");
+                for (float v : values) {
+                    sb.append(v).append(",");
+                }
+                sb.append(timeStamp).append(",").append(unixTime).append("\n");
+                mDataWriter.write(sb.toString());
+            } catch (IOException ioe) {
+                Timber.e(ioe);
+            }
+        }
+    }
 
     @Override
     public final void onSensorChanged(SensorEvent event) {
         long unixTime = System.currentTimeMillis();
         if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
-            if (mRecordingInertialData) {
-                try {
-                    StringBuilder sb = new StringBuilder();
-                    sb.append("1,");
-                    for (float v : event.values) {
-                        sb.append(v + ",");
-                    }
-                    sb.append(event.timestamp).append(unixTime).append("\n");
-                    mDataWriter.write(sb.toString());
-                } catch (IOException ioe) {
-                    Timber.e(ioe);
-                }
-            }
+            writeSensorData(event.values, event.timestamp, unixTime, 1);
         } else if (event.sensor.getType() == Sensor.TYPE_GYROSCOPE) {
-
-            if (mRecordingInertialData) {
-                try {
-                    StringBuilder sb = new StringBuilder();
-                    sb.append("2,");
-                    for (float v : event.values) {
-                        sb.append(v + ",");
-                    }
-                    sb.append(event.timestamp).append(unixTime).append("\n");
-                    mDataWriter.write(sb.toString());
-                } catch (IOException ioe) {
-                    Timber.e(ioe);
-                }
-            }
+            writeSensorData(event.values, event.timestamp, unixTime, 2);
+        } else if (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD) {
+            writeSensorData(event.values, event.timestamp, unixTime, 3);
+        } else if (event.sensor.getType() == Sensor.TYPE_ROTATION_VECTOR) {
+            float[] quaternions = new float[4];
+            SensorManager.getQuaternionFromVector(quaternions, event.values);
+            writeSensorData(quaternions, event.timestamp, unixTime, 4);
         }
     }
 
@@ -179,7 +182,7 @@ public class IMUManager implements SensorEventListener {
         mSensorThread = new HandlerThread("Sensor thread",
                 Process.THREAD_PRIORITY_MORE_FAVORABLE);
         mSensorThread.start();
-        String imuFreq = mSharedPreferences.getString("prefImuFreq", "1");
+        String imuFreq = "10000"; //mSharedPreferences.getString("prefImuFreq", "1");
         mSensorRate = Integer.parseInt(imuFreq);
         // Blocks until looper is prepared, which is fairly quick
         Handler sensorHandler = new Handler(mSensorThread.getLooper());
@@ -187,6 +190,10 @@ public class IMUManager implements SensorEventListener {
                 this, mAccel, mSensorRate, sensorHandler);
         mSensorManager.registerListener(
                 this, mGyro, mSensorRate, sensorHandler);
+        mSensorManager.registerListener(
+                this, mMag, mSensorRate, sensorHandler);
+        mSensorManager.registerListener(
+                this, mRotVec, mSensorRate, sensorHandler);
     }
 
     /**
@@ -195,6 +202,8 @@ public class IMUManager implements SensorEventListener {
     public void unregister() {
         mSensorManager.unregisterListener(this, mAccel);
         mSensorManager.unregisterListener(this, mGyro);
+        mSensorManager.unregisterListener(this, mMag);
+        mSensorManager.unregisterListener(this, mRotVec);
         mSensorManager.unregisterListener(this);
         mSensorThread.quitSafely();
         gpsManager.unregister();
